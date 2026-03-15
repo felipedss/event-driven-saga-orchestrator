@@ -1,0 +1,14 @@
+package com.platform.saga.orchestrator.model;
+
+public enum SagaStatus {
+  STARTED,
+  INVENTORY_PENDING,
+  INVENTORY_CONFIRMED,
+  INVENTORY_FAILED,
+  PAYMENT_PENDING,
+  PAYMENT_CONFIRMED,
+  PAYMENT_FAILED,
+  COMPENSATING,
+  COMPLETED,
+  CANCELLED
+}

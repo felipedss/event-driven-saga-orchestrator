@@ -1,0 +1,55 @@
+#logging:
+#  level:
+#    org.springframework.boot.autoconfigure: DEBUG
+
+spring:
+  # ---- DATABASE ----
+  datasource:
+    url: jdbc:postgresql://localhost:5432/orchestrator_db
+    username: postgres
+    password: postgres
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update  # creates/updates tables automatically based on your entities
+    show-sql: true      # logs SQL queries in the console (useful for development)
+    properties:
+      hibernate:
+        format_sql: true  # formats SQL logs to be more readable
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+
+  # ---- KAFKA ----
+  kafka:
+    listener:
+      type: single
+    bootstrap-servers: localhost:9094  # use kafka:9092 if running inside Docker
+
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer  # serializes objects to JSON
+
+    consumer:
+      group-id: order-orchestrator  # your application name
+      auto-offset-reset: earliest   # reads from the beginning if no offset is saved
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer  # deserializes JSON back to objects
+      properties:
+        spring.json.trusted.packages: "*"  # allows deserialization of any package
+# ---- KAFKA TOPICS ----
+topics:
+  order:
+    created: order.created              # order-service → orchestrator
+    confirmed: order.confirmed          # orchestrator → order-service
+    canceled: order.canceled            # orchestrator → order-service
+  inventory:
+    reserve: order.inventory.reserve    # orchestrator → inventory-service
+    reserved: order.inventory.reserved  # inventory-service → orchestrator
+    failed: order.inventory.failed      # inventory-service → orchestrator
+    release: order.inventory.release              # orchestrator → inventory-service (compensation)
+    released: order.inventory.released            # inventory-service → orchestrator (compensation)
+    release-failed: order.inventory.release.failed  # inventory-service → orchestrator (compensation failed)
+  payment:
+    process: order.payment.process      # orchestrator → payment-service
+    processed: order.payment.processed  # payment-service → orchestrator
+    failed: order.payment.failed        # payment-service → orchestrator
