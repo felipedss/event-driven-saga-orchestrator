@@ -3,6 +3,7 @@ package com.platform.saga.orchestrator.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -56,6 +57,7 @@ class SagaServiceTest {
     event.setOrderId("order-1");
     event.setProductId("product-A");
     event.setQuantity(2);
+    when(sagaRepository.findByOrderId("order-1")).thenReturn(Optional.empty());
     when(sagaRepository.save(any(OrderSaga.class))).thenAnswer(inv -> inv.getArgument(0));
 
     sagaService.handleOrderCreated(event);
@@ -76,6 +78,7 @@ class SagaServiceTest {
     event.setOrderId("order-1");
     event.setProductId("product-A");
     event.setQuantity(5);
+    when(sagaRepository.findByOrderId("order-1")).thenReturn(Optional.empty());
     ArgumentCaptor<OrderSaga> sagaCaptor = ArgumentCaptor.forClass(OrderSaga.class);
     when(sagaRepository.save(sagaCaptor.capture())).thenAnswer(inv -> inv.getArgument(0));
 
@@ -90,6 +93,7 @@ class SagaServiceTest {
   void handleOrderCreated_sagaEndsWithInventoryPendingStatus() {
     OrderCreatedEvent event = new OrderCreatedEvent();
     event.setOrderId("order-2");
+    when(sagaRepository.findByOrderId("order-2")).thenReturn(Optional.empty());
     ArgumentCaptor<OrderSaga> sagaCaptor = ArgumentCaptor.forClass(OrderSaga.class);
     when(sagaRepository.save(sagaCaptor.capture())).thenAnswer(inv -> inv.getArgument(0));
 
@@ -97,6 +101,19 @@ class SagaServiceTest {
 
     OrderSaga lastSaved = sagaCaptor.getAllValues().get(sagaCaptor.getAllValues().size() - 1);
     assertThat(lastSaved.getStatus()).isEqualTo(SagaStatus.INVENTORY_PENDING);
+  }
+
+  @Test
+  void handleOrderCreated_skipsDuplicate_whenSagaAlreadyExists() {
+    OrderCreatedEvent event = new OrderCreatedEvent();
+    event.setOrderId("order-1");
+    when(sagaRepository.findByOrderId("order-1"))
+        .thenReturn(Optional.of(sagaWithStatus("order-1", SagaStatus.INVENTORY_PENDING)));
+
+    sagaService.handleOrderCreated(event);
+
+    verify(sagaRepository, never()).save(any());
+    verify(kafkaProducerService, never()).send(any(), any(), any());
   }
 
   // ── handleInventoryReserved ─────────────────────────────────────────────────
@@ -140,6 +157,20 @@ class SagaServiceTest {
     assertThat(lastSaved.getStatus()).isEqualTo(SagaStatus.PAYMENT_PENDING);
   }
 
+  @Test
+  void handleInventoryReserved_skipsEvent_whenSagaNotInInventoryPending() {
+    InventoryReservedEvent event = new InventoryReservedEvent();
+    event.setOrderId("order-1");
+
+    when(sagaRepository.findByOrderId("order-1"))
+        .thenReturn(Optional.of(sagaWithStatus("order-1", SagaStatus.PAYMENT_PENDING)));
+
+    sagaService.handleInventoryReserved(event);
+
+    verify(sagaRepository, never()).save(any());
+    verify(kafkaProducerService, never()).send(any(), any(), any());
+  }
+
   // ── handleInventoryReservationFailed ───────────────────────────────────────
 
   @Test
@@ -172,6 +203,20 @@ class SagaServiceTest {
 
     OrderSaga lastSaved = sagaCaptor.getAllValues().get(sagaCaptor.getAllValues().size() - 1);
     assertThat(lastSaved.getStatus()).isEqualTo(SagaStatus.CANCELLED);
+  }
+
+  @Test
+  void handleInventoryReservationFailed_skipsEvent_whenSagaNotInInventoryPending() {
+    InventoryReservationFailedEvent event = new InventoryReservationFailedEvent();
+    event.setOrderId("order-1");
+
+    when(sagaRepository.findByOrderId("order-1"))
+        .thenReturn(Optional.of(sagaWithStatus("order-1", SagaStatus.CANCELLED)));
+
+    sagaService.handleInventoryReservationFailed(event);
+
+    verify(sagaRepository, never()).save(any());
+    verify(kafkaProducerService, never()).send(any(), any(), any());
   }
 
   // ── handlePaymentProcessed ──────────────────────────────────────────────────
@@ -207,6 +252,20 @@ class SagaServiceTest {
 
     OrderSaga lastSaved = sagaCaptor.getAllValues().get(sagaCaptor.getAllValues().size() - 1);
     assertThat(lastSaved.getStatus()).isEqualTo(SagaStatus.COMPLETED);
+  }
+
+  @Test
+  void handlePaymentProcessed_skipsEvent_whenSagaNotInPaymentPending() {
+    PaymentProcessedEvent event = new PaymentProcessedEvent();
+    event.setOrderId("order-1");
+
+    when(sagaRepository.findByOrderId("order-1"))
+        .thenReturn(Optional.of(sagaWithStatus("order-1", SagaStatus.COMPLETED)));
+
+    sagaService.handlePaymentProcessed(event);
+
+    verify(sagaRepository, never()).save(any());
+    verify(kafkaProducerService, never()).send(any(), any(), any());
   }
 
   // ── handlePaymentFailed (compensation) ─────────────────────────────────────
@@ -251,6 +310,20 @@ class SagaServiceTest {
     assertThat(lastSaved.getStatus()).isEqualTo(SagaStatus.COMPENSATING);
   }
 
+  @Test
+  void handlePaymentFailed_skipsEvent_whenSagaNotInPaymentPending() {
+    PaymentProcessingFailedEvent event = new PaymentProcessingFailedEvent();
+    event.setOrderId("order-1");
+
+    when(sagaRepository.findByOrderId("order-1"))
+        .thenReturn(Optional.of(sagaWithStatus("order-1", SagaStatus.COMPENSATING)));
+
+    sagaService.handlePaymentFailed(event);
+
+    verify(sagaRepository, never()).save(any());
+    verify(kafkaProducerService, never()).send(any(), any(), any());
+  }
+
   // ── handleInventoryReleased ─────────────────────────────────────────────────
 
   @Test
@@ -285,6 +358,20 @@ class SagaServiceTest {
 
     OrderSaga lastSaved = sagaCaptor.getAllValues().get(sagaCaptor.getAllValues().size() - 1);
     assertThat(lastSaved.getStatus()).isEqualTo(SagaStatus.CANCELLED);
+  }
+
+  @Test
+  void handleInventoryReleased_skipsEvent_whenSagaNotInCompensating() {
+    InventoryReleasedEvent event = new InventoryReleasedEvent();
+    event.setOrderId("order-1");
+
+    when(sagaRepository.findByOrderId("order-1"))
+        .thenReturn(Optional.of(sagaWithStatus("order-1", SagaStatus.CANCELLED)));
+
+    sagaService.handleInventoryReleased(event);
+
+    verify(sagaRepository, never()).save(any());
+    verify(kafkaProducerService, never()).send(any(), any(), any());
   }
 
   // ── handleInventoryReleaseFailed ────────────────────────────────────────────
@@ -322,6 +409,20 @@ class SagaServiceTest {
 
     OrderSaga lastSaved = sagaCaptor.getAllValues().get(sagaCaptor.getAllValues().size() - 1);
     assertThat(lastSaved.getStatus()).isEqualTo(SagaStatus.CANCELLED);
+  }
+
+  @Test
+  void handleInventoryReleaseFailed_skipsEvent_whenSagaNotInCompensating() {
+    InventoryReleaseFailedEvent event = new InventoryReleaseFailedEvent();
+    event.setOrderId("order-1");
+
+    when(sagaRepository.findByOrderId("order-1"))
+        .thenReturn(Optional.of(sagaWithStatus("order-1", SagaStatus.CANCELLED)));
+
+    sagaService.handleInventoryReleaseFailed(event);
+
+    verify(sagaRepository, never()).save(any());
+    verify(kafkaProducerService, never()).send(any(), any(), any());
   }
 
   // ── helpers ─────────────────────────────────────────────────────────────────
