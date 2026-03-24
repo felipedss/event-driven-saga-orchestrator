@@ -1,5 +1,6 @@
 package com.platform.saga.orchestrator.model;
 
+import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -18,7 +19,9 @@ public class OrderSaga {
   @GeneratedValue(strategy = GenerationType.UUID)
   private UUID sagaId;
 
+  @Column(unique = true, nullable = false)
   private String orderId;
+
   private String productId;
   private int quantity;
   private String cancellationReason;

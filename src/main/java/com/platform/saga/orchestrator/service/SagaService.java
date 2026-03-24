@@ -48,6 +48,11 @@ public class SagaService {
   private final KafkaProducerService kafkaProducerService;
 
   public void handleOrderCreated(OrderCreatedEvent event) {
+    if (sagaRepository.findByOrderId(event.getOrderId()).isPresent()) {
+      log.warn("Saga already exists for orderId={}, skipping duplicate", event.getOrderId());
+      return;
+    }
+
     OrderSaga saga = new OrderSaga();
     saga.setOrderId(event.getOrderId());
     saga.setProductId(event.getProductId());
@@ -70,6 +75,14 @@ public class SagaService {
     OrderSaga saga = findSaga(event.getOrderId(), "order.inventory.reserved");
     if (saga == null) return;
 
+    if (saga.getStatus() != SagaStatus.INVENTORY_PENDING) {
+      log.warn(
+          "Saga {} in unexpected status {} for InventoryReservedEvent, skipping",
+          event.getOrderId(),
+          saga.getStatus());
+      return;
+    }
+
     saga.setStatus(SagaStatus.INVENTORY_CONFIRMED);
     sagaRepository.save(saga);
     log.info("Inventory confirmed for orderId={}", event.getOrderId());
@@ -91,6 +104,14 @@ public class SagaService {
     OrderSaga saga = findSaga(event.getOrderId(), "order.inventory.failed");
     if (saga == null) return;
 
+    if (saga.getStatus() != SagaStatus.INVENTORY_PENDING) {
+      log.warn(
+          "Saga {} in unexpected status {} for InventoryReservationFailedEvent, skipping",
+          event.getOrderId(),
+          saga.getStatus());
+      return;
+    }
+
     saga.setStatus(SagaStatus.INVENTORY_FAILED);
     sagaRepository.save(saga);
     log.warn("Inventory reservation failed for orderId={}", event.getOrderId());
@@ -101,6 +122,14 @@ public class SagaService {
   public void handlePaymentProcessed(PaymentProcessedEvent event) {
     OrderSaga saga = findSaga(event.getOrderId(), "order.payment.processed");
     if (saga == null) return;
+
+    if (saga.getStatus() != SagaStatus.PAYMENT_PENDING) {
+      log.warn(
+          "Saga {} in unexpected status {} for PaymentProcessedEvent, skipping",
+          event.getOrderId(),
+          saga.getStatus());
+      return;
+    }
 
     saga.setStatus(SagaStatus.PAYMENT_CONFIRMED);
     sagaRepository.save(saga);
@@ -119,6 +148,14 @@ public class SagaService {
   public void handlePaymentFailed(PaymentProcessingFailedEvent event) {
     OrderSaga saga = findSaga(event.getOrderId(), "order.payment.failed");
     if (saga == null) return;
+
+    if (saga.getStatus() != SagaStatus.PAYMENT_PENDING) {
+      log.warn(
+          "Saga {} in unexpected status {} for PaymentProcessingFailedEvent, skipping",
+          event.getOrderId(),
+          saga.getStatus());
+      return;
+    }
 
     saga.setStatus(SagaStatus.PAYMENT_FAILED);
     saga.setCancellationReason(event.getReason());
@@ -139,6 +176,14 @@ public class SagaService {
     OrderSaga saga = findSaga(event.getOrderId(), "order.inventory.released");
     if (saga == null) return;
 
+    if (saga.getStatus() != SagaStatus.COMPENSATING) {
+      log.warn(
+          "Saga {} in unexpected status {} for InventoryReleasedEvent, skipping",
+          event.getOrderId(),
+          saga.getStatus());
+      return;
+    }
+
     log.info("Inventory released for orderId={}, proceeding to cancel order", event.getOrderId());
     cancelSaga(saga, event.getOrderId(), saga.getCancellationReason());
   }
@@ -146,6 +191,14 @@ public class SagaService {
   public void handleInventoryReleaseFailed(InventoryReleaseFailedEvent event) {
     OrderSaga saga = findSaga(event.getOrderId(), "order.inventory.release.failed");
     if (saga == null) return;
+
+    if (saga.getStatus() != SagaStatus.COMPENSATING) {
+      log.warn(
+          "Saga {} in unexpected status {} for InventoryReleaseFailedEvent, skipping",
+          event.getOrderId(),
+          saga.getStatus());
+      return;
+    }
 
     log.warn(
         "Inventory release failed for orderId={}, reason={} — stock may be inconsistent, manual intervention required",
