@@ -11,6 +11,7 @@ import com.platform.saga.orchestrator.service.SagaService;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.annotation.KafkaListener;
+import org.springframework.kafka.support.Acknowledgment;
 import org.springframework.stereotype.Service;
 
 @Slf4j
@@ -21,54 +22,62 @@ public class KafkaConsumerService {
   private final SagaService sagaService;
 
   @KafkaListener(topics = "${topics.order.created}", groupId = "${spring.kafka.consumer.group-id}")
-  public void onOrderCreated(OrderCreatedEvent event) {
+  public void onOrderCreated(OrderCreatedEvent event, Acknowledgment ack) {
     log.info("Received order.created for orderId={}", event.getOrderId());
     sagaService.handleOrderCreated(event);
+    ack.acknowledge();
   }
 
   @KafkaListener(
       topics = "${topics.inventory.reserved}",
       groupId = "${spring.kafka.consumer.group-id}")
-  public void onInventoryReserved(InventoryReservedEvent event) {
+  public void onInventoryReserved(InventoryReservedEvent event, Acknowledgment ack) {
     log.info("Received order.inventory.reserved for orderId={}", event.getOrderId());
     sagaService.handleInventoryReserved(event);
+    ack.acknowledge();
   }
 
   @KafkaListener(
       topics = "${topics.inventory.failed}",
       groupId = "${spring.kafka.consumer.group-id}")
-  public void onInventoryReservationFailed(InventoryReservationFailedEvent event) {
+  public void onInventoryReservationFailed(
+      InventoryReservationFailedEvent event, Acknowledgment ack) {
     log.warn("Received order.inventory.failed for orderId={}", event.getOrderId());
     sagaService.handleInventoryReservationFailed(event);
+    ack.acknowledge();
   }
 
   @KafkaListener(
       topics = "${topics.payment.processed}",
       groupId = "${spring.kafka.consumer.group-id}")
-  public void onPaymentProcessed(PaymentProcessedEvent event) {
+  public void onPaymentProcessed(PaymentProcessedEvent event, Acknowledgment ack) {
     log.info("Received order.payment.processed for orderId={}", event.getOrderId());
     sagaService.handlePaymentProcessed(event);
+    ack.acknowledge();
   }
 
   @KafkaListener(topics = "${topics.payment.failed}", groupId = "${spring.kafka.consumer.group-id}")
-  public void onPaymentFailed(PaymentProcessingFailedEvent event) {
+  public void onPaymentFailed(PaymentProcessingFailedEvent event, Acknowledgment ack) {
     log.warn("Received order.payment.failed for orderId={}", event.getOrderId());
     sagaService.handlePaymentFailed(event);
+    ack.acknowledge();
   }
 
   @KafkaListener(
       topics = "${topics.inventory.released}",
       groupId = "${spring.kafka.consumer.group-id}")
-  public void onInventoryReleased(InventoryReleasedEvent event) {
+  public void onInventoryReleased(InventoryReleasedEvent event, Acknowledgment ack) {
     log.info("Received order.inventory.released for orderId={}", event.getOrderId());
     sagaService.handleInventoryReleased(event);
+    ack.acknowledge();
   }
 
   @KafkaListener(
       topics = "${topics.inventory.release-failed}",
       groupId = "${spring.kafka.consumer.group-id}")
-  public void onInventoryReleaseFailed(InventoryReleaseFailedEvent event) {
+  public void onInventoryReleaseFailed(InventoryReleaseFailedEvent event, Acknowledgment ack) {
     log.warn("Received order.inventory.release.failed for orderId={}", event.getOrderId());
     sagaService.handleInventoryReleaseFailed(event);
+    ack.acknowledge();
   }
 }

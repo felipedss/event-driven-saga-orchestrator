@@ -210,6 +210,7 @@ public class SagaService {
 
   private void cancelSaga(OrderSaga saga, String orderId, String reason) {
     saga.setStatus(SagaStatus.CANCELLED);
+    saga.setCancellationReason(reason);
     sagaRepository.save(saga);
 
     kafkaProducerService.send(
