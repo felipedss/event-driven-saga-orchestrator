@@ -206,6 +206,23 @@ class SagaServiceTest {
   }
 
   @Test
+  void handleInventoryReservationFailed_persistsCancellationReason() {
+    InventoryReservationFailedEvent event = new InventoryReservationFailedEvent();
+    event.setOrderId("order-1");
+    event.setReason("Out of stock");
+
+    OrderSaga saga = sagaWithStatus("order-1", SagaStatus.INVENTORY_PENDING);
+    when(sagaRepository.findByOrderId("order-1")).thenReturn(Optional.of(saga));
+    ArgumentCaptor<OrderSaga> sagaCaptor = ArgumentCaptor.forClass(OrderSaga.class);
+    when(sagaRepository.save(sagaCaptor.capture())).thenAnswer(inv -> inv.getArgument(0));
+
+    sagaService.handleInventoryReservationFailed(event);
+
+    OrderSaga lastSaved = sagaCaptor.getAllValues().get(sagaCaptor.getAllValues().size() - 1);
+    assertThat(lastSaved.getCancellationReason()).isEqualTo("Out of stock");
+  }
+
+  @Test
   void handleInventoryReservationFailed_skipsEvent_whenSagaNotInInventoryPending() {
     InventoryReservationFailedEvent event = new InventoryReservationFailedEvent();
     event.setOrderId("order-1");
@@ -361,6 +378,23 @@ class SagaServiceTest {
   }
 
   @Test
+  void handleInventoryReleased_persistsCancellationReason() {
+    InventoryReleasedEvent event = new InventoryReleasedEvent();
+    event.setOrderId("order-1");
+
+    OrderSaga saga = sagaWithStatus("order-1", SagaStatus.COMPENSATING);
+    saga.setCancellationReason("Insufficient funds");
+    when(sagaRepository.findByOrderId("order-1")).thenReturn(Optional.of(saga));
+    ArgumentCaptor<OrderSaga> sagaCaptor = ArgumentCaptor.forClass(OrderSaga.class);
+    when(sagaRepository.save(sagaCaptor.capture())).thenAnswer(inv -> inv.getArgument(0));
+
+    sagaService.handleInventoryReleased(event);
+
+    OrderSaga lastSaved = sagaCaptor.getAllValues().get(sagaCaptor.getAllValues().size() - 1);
+    assertThat(lastSaved.getCancellationReason()).isEqualTo("Insufficient funds");
+  }
+
+  @Test
   void handleInventoryReleased_skipsEvent_whenSagaNotInCompensating() {
     InventoryReleasedEvent event = new InventoryReleasedEvent();
     event.setOrderId("order-1");
@@ -409,6 +443,24 @@ class SagaServiceTest {
 
     OrderSaga lastSaved = sagaCaptor.getAllValues().get(sagaCaptor.getAllValues().size() - 1);
     assertThat(lastSaved.getStatus()).isEqualTo(SagaStatus.CANCELLED);
+  }
+
+  @Test
+  void handleInventoryReleaseFailed_persistsOriginalCancellationReason() {
+    InventoryReleaseFailedEvent event = new InventoryReleaseFailedEvent();
+    event.setOrderId("order-1");
+    event.setReason("Product not found");
+
+    OrderSaga saga = sagaWithStatus("order-1", SagaStatus.COMPENSATING);
+    saga.setCancellationReason("Insufficient funds");
+    when(sagaRepository.findByOrderId("order-1")).thenReturn(Optional.of(saga));
+    ArgumentCaptor<OrderSaga> sagaCaptor = ArgumentCaptor.forClass(OrderSaga.class);
+    when(sagaRepository.save(sagaCaptor.capture())).thenAnswer(inv -> inv.getArgument(0));
+
+    sagaService.handleInventoryReleaseFailed(event);
+
+    OrderSaga lastSaved = sagaCaptor.getAllValues().get(sagaCaptor.getAllValues().size() - 1);
+    assertThat(lastSaved.getCancellationReason()).isEqualTo("Insufficient funds");
   }
 
   @Test

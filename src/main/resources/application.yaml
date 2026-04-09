@@ -36,6 +36,14 @@ spring:
       value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer  # deserializes JSON back to objects
       properties:
         spring.json.trusted.packages: "*"  # allows deserialization of any package
+# ---- KAFKA DLQ ----
+kafka:
+  dlq:
+    backoff-interval-ms: 1000  # wait between retries
+    max-retries: 3             # attempts before routing to DLQ
+    partitions: 1              # DLQ topics are low-throughput, 1 partition is sufficient
+    replicas: 1
+
 # ---- KAFKA TOPICS ----
 topics:
   order:
