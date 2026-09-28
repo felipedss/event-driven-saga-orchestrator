@@ -61,3 +61,13 @@ topics:
     process: order.payment.process      # orchestrator → payment-service
     processed: order.payment.processed  # payment-service → orchestrator
     failed: order.payment.failed        # payment-service → orchestrator
+
+# ---- AI SAGA ANALYZER ----
+ai:
+  openai:
+    base-url: https://api.openai.com/v1
+    api-key: ${OPENAI_API_KEY:}
+    model: gpt-4o-mini
+    connect-timeout: 5s
+    read-timeout: 20s
+    temperature: 0.2
