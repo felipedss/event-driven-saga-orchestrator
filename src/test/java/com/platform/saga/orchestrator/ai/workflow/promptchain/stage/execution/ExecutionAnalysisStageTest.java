@@ -28,10 +28,13 @@ class ExecutionAnalysisStageTest {
   @InjectMocks private ExecutionAnalysisStage stage;
 
   private static final UUID ANALYSIS_ID = UUID.randomUUID();
+  private static final List<String> SAGA_REACHED_PHASES =
+      List.of("STARTED", "INVENTORY_PENDING", "INVENTORY_CONFIRMED", "PAYMENT_PENDING");
 
   @Test
   void execute_returnsSuccess_forWellFormedOutput() {
-    ExecutionAnalysisOutput output = honestOutput(List.of("Only current status known"));
+    ExecutionAnalysisOutput output =
+        honestOutput("PAYMENT_PENDING", SAGA_REACHED_PHASES, List.of("Only current status known"));
     when(aiModelClient.generate(any(), eq(ExecutionAnalysisOutput.class)))
         .thenReturn(response(output));
 
@@ -42,12 +45,50 @@ class ExecutionAnalysisStageTest {
     assertThat(result.output()).isEqualTo(output);
   }
 
+  // ── determinism guard: currentState/reachedPhases are facts, not the model's opinion ────────
+
+  @Test
+  void execute_returnsValidationFailed_whenCurrentStateDoesNotMatchDeterministicSagaStatus() {
+    ExecutionAnalysisOutput output =
+        new ExecutionAnalysisOutput(
+            "COMPLETED", // the real saga status is PAYMENT_PENDING — the model changed it
+            SAGA_REACHED_PHASES,
+            "summary",
+            new DataCompleteness(true, false, false, false, List.of("limitation")));
+    when(aiModelClient.generate(any(), eq(ExecutionAnalysisOutput.class)))
+        .thenReturn(response(output));
+
+    var result = stage.execute(new ExecutionAnalysisInput(sagaSnapshot()), ANALYSIS_ID);
+
+    assertThat(result.status()).isEqualTo(StageStatus.VALIDATION_FAILED);
+    assertThat(result.errorMessage()).contains("currentState");
+  }
+
+  @Test
+  void execute_returnsValidationFailed_whenReachedPhasesDoesNotMatchDeterministicPhases() {
+    ExecutionAnalysisOutput output =
+        new ExecutionAnalysisOutput(
+            "PAYMENT_PENDING",
+            List.of("STARTED"), // the real deterministic list has 4 entries — model shortened it
+            "summary",
+            new DataCompleteness(true, false, false, false, List.of("limitation")));
+    when(aiModelClient.generate(any(), eq(ExecutionAnalysisOutput.class)))
+        .thenReturn(response(output));
+
+    var result = stage.execute(new ExecutionAnalysisInput(sagaSnapshot()), ANALYSIS_ID);
+
+    assertThat(result.status()).isEqualTo(StageStatus.VALIDATION_FAILED);
+    assertThat(result.errorMessage()).contains("reachedPhases");
+  }
+
+  // ── capability-claim guard: dataCompleteness must not claim sources this milestone lacks ────
+
   @Test
   void execute_returnsValidationFailed_whenClaimingStepByStepHistoryAvailable() {
     ExecutionAnalysisOutput output =
         new ExecutionAnalysisOutput(
             "PAYMENT_PENDING",
-            List.of("STARTED"),
+            SAGA_REACHED_PHASES,
             "summary",
             new DataCompleteness(true, true, false, false, List.of()));
     when(aiModelClient.generate(any(), eq(ExecutionAnalysisOutput.class)))
@@ -63,7 +104,7 @@ class ExecutionAnalysisStageTest {
     ExecutionAnalysisOutput output =
         new ExecutionAnalysisOutput(
             "PAYMENT_PENDING",
-            List.of("STARTED"),
+            SAGA_REACHED_PHASES,
             "summary",
             new DataCompleteness(true, false, false, true, List.of()));
     when(aiModelClient.generate(any(), eq(ExecutionAnalysisOutput.class)))
@@ -79,7 +120,7 @@ class ExecutionAnalysisStageTest {
     ExecutionAnalysisOutput output =
         new ExecutionAnalysisOutput(
             "PAYMENT_PENDING",
-            List.of("STARTED"),
+            SAGA_REACHED_PHASES,
             "summary",
             new DataCompleteness(true, false, true, false, List.of()));
     when(aiModelClient.generate(any(), eq(ExecutionAnalysisOutput.class)))
@@ -95,7 +136,7 @@ class ExecutionAnalysisStageTest {
     ExecutionAnalysisOutput output =
         new ExecutionAnalysisOutput(
             "PAYMENT_PENDING",
-            List.of("STARTED"),
+            SAGA_REACHED_PHASES,
             "summary",
             new DataCompleteness(false, false, false, false, List.of()));
     when(aiModelClient.generate(any(), eq(ExecutionAnalysisOutput.class)))
@@ -105,6 +146,8 @@ class ExecutionAnalysisStageTest {
 
     assertThat(result.status()).isEqualTo(StageStatus.VALIDATION_FAILED);
   }
+
+  // ── provider/unexpected failures ─────────────────────────────────────────────────────────────
 
   @Test
   void execute_returnsProviderError_whenProviderThrowsAiModelException() {
@@ -153,7 +196,10 @@ class ExecutionAnalysisStageTest {
             Instant.now(),
             List.of("STARTED"));
     ExecutionAnalysisOutput output =
-        honestOutput(List.of("Only current status known; no cancellation reason"));
+        honestOutput(
+            "STARTED",
+            List.of("STARTED"),
+            List.of("Only current status known; no cancellation reason"));
     when(aiModelClient.generate(any(), eq(ExecutionAnalysisOutput.class)))
         .thenReturn(response(output));
 
@@ -163,11 +209,12 @@ class ExecutionAnalysisStageTest {
     assertThat(result.output().dataCompleteness().limitations()).isNotEmpty();
   }
 
-  private ExecutionAnalysisOutput honestOutput(List<String> limitations) {
+  private ExecutionAnalysisOutput honestOutput(
+      String currentState, List<String> reachedPhases, List<String> limitations) {
     return new ExecutionAnalysisOutput(
-        "PAYMENT_PENDING",
-        List.of("STARTED", "INVENTORY_PENDING", "INVENTORY_CONFIRMED", "PAYMENT_PENDING"),
-        "Saga is awaiting payment confirmation.",
+        currentState,
+        reachedPhases,
+        "Saga is currently in status " + currentState + ".",
         new DataCompleteness(true, false, false, false, limitations));
   }
 
@@ -185,6 +232,6 @@ class ExecutionAnalysisStageTest {
         null,
         Instant.now(),
         Instant.now(),
-        List.of("STARTED", "INVENTORY_PENDING", "INVENTORY_CONFIRMED", "PAYMENT_PENDING"));
+        SAGA_REACHED_PHASES);
   }
 }

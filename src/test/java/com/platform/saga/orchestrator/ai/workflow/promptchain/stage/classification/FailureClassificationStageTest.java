@@ -110,6 +110,22 @@ class FailureClassificationStageTest {
   }
 
   @Test
+  void execute_validatesAgainstRealSagaStatus_notExecutionAnalysisCurrentState() {
+    // executionAnalysis.currentState() is deliberately stale/wrong (as if Stage 1's own
+    // determinism guard had somehow been bypassed); sagaStatus is the real, persisted value and
+    // must be what this stage's validation actually uses.
+    FailureClassificationInput input = classificationInput("PAYMENT_FAILED", "COMPLETED");
+    // Correct per the REAL status (PAYMENT_FAILED -> COMPENSATING), wrong per the stale one
+    // (COMPLETED -> TERMINAL_SUCCESS only) — if the stage validated against the stale field this
+    // would fail.
+    stubResponse(classification(FailureCategory.UNKNOWN, ExecutionAssessment.COMPENSATING));
+
+    var result = stage.execute(input, ANALYSIS_ID);
+
+    assertThat(result.isSuccess()).isTrue();
+  }
+
+  @Test
   void execute_returnsProviderError_whenProviderThrowsAiModelException() {
     when(aiModelClient.generate(any(), eq(FailureClassificationOutput.class)))
         .thenThrow(new AiModelException("boom"));
@@ -139,13 +155,18 @@ class FailureClassificationStageTest {
     return new FailureClassificationOutput(category, assessment, 0.8, "reasoning");
   }
 
-  private FailureClassificationInput classificationInput(String currentState) {
+  private FailureClassificationInput classificationInput(String sagaStatus) {
+    return classificationInput(sagaStatus, sagaStatus);
+  }
+
+  private FailureClassificationInput classificationInput(
+      String sagaStatus, String executionAnalysisCurrentState) {
     ExecutionAnalysisOutput executionAnalysis =
         new ExecutionAnalysisOutput(
-            currentState,
-            List.of(currentState),
+            executionAnalysisCurrentState,
+            List.of(executionAnalysisCurrentState),
             "summary",
             new DataCompleteness(true, false, false, false, List.of("limitation")));
-    return new FailureClassificationInput(executionAnalysis, null);
+    return new FailureClassificationInput(executionAnalysis, sagaStatus, null);
   }
 }

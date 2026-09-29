@@ -109,9 +109,10 @@ public class FailureClassificationStage
       return "confidence must be between 0.0 and 1.0, got " + output.confidence();
     }
 
-    String currentState =
-        input.executionAnalysis() != null ? input.executionAnalysis().currentState() : null;
-    SagaStatus status = parseStatus(currentState);
+    // Deliberately sourced from input.sagaStatus() — the real, persisted status — never from
+    // input.executionAnalysis().currentState(), which is LLM-produced output and must not be
+    // trusted as the ground truth for validating another LLM output against.
+    SagaStatus status = parseStatus(input.sagaStatus());
     if (status == null) {
       // Unrecognized status string — nothing to validate against; UNKNOWN-style leniency.
       return null;
@@ -145,13 +146,13 @@ public class FailureClassificationStage
 
   private String buildUserPrompt(FailureClassificationInput input) {
     return """
-        Execution Analysis current state: %s
+        Saga status (deterministic ground truth): %s
         Execution Analysis reached phases: %s
         Execution Analysis narrative summary: %s
         Cancellation reason: %s
         """
         .formatted(
-            input.executionAnalysis().currentState(),
+            input.sagaStatus(),
             input.executionAnalysis().reachedPhases(),
             input.executionAnalysis().narrativeSummary(),
             input.cancellationReason() == null ? "none" : input.cancellationReason());

@@ -44,7 +44,7 @@ public class SagaAnalysisPromptChain implements AiWorkflow<SagaSnapshot, SagaAna
     }
 
     StageResult<FailureClassificationOutput> classificationResult =
-        runFailureClassification(executionResult.output(), saga.cancellationReason(), analysisId);
+        runFailureClassification(saga, executionResult.output(), analysisId);
 
     boolean complete = classificationResult.isSuccess();
     SagaAnalysisResult result =
@@ -66,10 +66,12 @@ public class SagaAnalysisPromptChain implements AiWorkflow<SagaSnapshot, SagaAna
   }
 
   private StageResult<FailureClassificationOutput> runFailureClassification(
-      ExecutionAnalysisOutput executionAnalysis, String cancellationReason, UUID analysisId) {
+      SagaSnapshot saga, ExecutionAnalysisOutput executionAnalysis, UUID analysisId) {
     try {
       return failureClassificationStage.execute(
-          new FailureClassificationInput(executionAnalysis, cancellationReason), analysisId);
+          new FailureClassificationInput(
+              executionAnalysis, saga.status(), saga.cancellationReason()),
+          analysisId);
     } catch (Exception e) {
       log.error("[{}] Failure Classification stage threw unexpectedly", analysisId, e);
       return StageResult.failure(

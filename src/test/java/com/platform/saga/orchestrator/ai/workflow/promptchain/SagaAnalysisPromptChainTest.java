@@ -57,6 +57,7 @@ class SagaAnalysisPromptChainTest {
         ArgumentCaptor.forClass(FailureClassificationInput.class);
     verify(failureClassificationStage).execute(captor.capture(), eq(ANALYSIS_ID));
     assertThat(captor.getValue().executionAnalysis()).isEqualTo(executionOutput);
+    assertThat(captor.getValue().sagaStatus()).isEqualTo("PAYMENT_PENDING");
     assertThat(captor.getValue().cancellationReason()).isEqualTo("reason");
     assertThat(result.complete()).isTrue();
     assertThat(result.output().executionAnalysis()).isEqualTo(executionOutput);

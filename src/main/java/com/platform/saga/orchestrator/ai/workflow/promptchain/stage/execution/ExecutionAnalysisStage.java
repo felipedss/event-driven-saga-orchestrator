@@ -11,6 +11,7 @@ import com.platform.saga.orchestrator.ai.workflow.promptchain.stage.StageResult;
 import com.platform.saga.orchestrator.ai.workflow.promptchain.stage.StageStatus;
 import com.platform.saga.orchestrator.ai.workflow.promptchain.stage.StageTelemetry;
 import java.net.SocketTimeoutException;
+import java.util.Objects;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -63,7 +64,7 @@ public class ExecutionAnalysisStage
 
     StageTelemetry telemetry = telemetryFrom(response);
     ExecutionAnalysisOutput output = response.output();
-    String violation = validate(output);
+    String violation = validate(input, output);
     if (violation != null) {
       log.warn("[{}] Execution Analysis output failed validation: {}", analysisId, violation);
       return StageResult.failure(
@@ -78,8 +79,36 @@ public class ExecutionAnalysisStage
     return StageResult.success(StageName.EXECUTION_ANALYSIS, output, telemetry);
   }
 
-  /** The fabrication guard: rejects a response that claims data sources this milestone lacks. */
-  private String validate(ExecutionAnalysisOutput output) {
+  /**
+   * The fabrication guard. Two independent things are checked:
+   *
+   * <ol>
+   *   <li><b>Determinism:</b> {@code currentState} and {@code reachedPhases} are not the model's
+   *       opinion — they are facts already computed in Java by {@link SagaSnapshot}. The model is
+   *       only allowed to echo them back (it may add narrative framing in {@code narrativeSummary},
+   *       never redefine the facts themselves). Any deviation means the model substituted its own
+   *       belief about the saga's state for the deterministic ground truth, which {@link
+   *       FailureClassificationStage} would otherwise trust downstream.
+   *   <li><b>Capability claims:</b> {@code dataCompleteness} must not claim data sources this
+   *       milestone lacks.
+   * </ol>
+   */
+  private String validate(ExecutionAnalysisInput input, ExecutionAnalysisOutput output) {
+    SagaSnapshot saga = input.saga();
+    if (!Objects.equals(output.currentState(), saga.status())) {
+      return "currentState was changed by the model: expected the deterministic saga status '"
+          + saga.status()
+          + "' but got '"
+          + output.currentState()
+          + "'";
+    }
+    if (!Objects.equals(output.reachedPhases(), saga.reachedPhases())) {
+      return "reachedPhases was changed by the model: expected the deterministic phases "
+          + saga.reachedPhases()
+          + " but got "
+          + output.reachedPhases();
+    }
+
     DataCompleteness completeness = output.dataCompleteness();
     if (completeness == null) {
       return "dataCompleteness is missing";
